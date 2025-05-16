@@ -5,8 +5,8 @@ const bcrypt = require('bcryptjs');
 const cors = require('cors');
 require('dotenv').config();
 
-const User = require('./model');
-const Course = require('./model');
+const User = require('./model/userModel');
+const Course = require('./model/courseModel');
 
 const app = express();
 app.use(express.json());
@@ -45,7 +45,9 @@ app.post('/api/register', async (req, res) =>{
     });
 
     await newUser.save();
-    res.status(201).json({ message: "User created successfully", newUser })
+    const userToReturn = newUser.toObject()
+    delete userToReturn.password
+    res.status(201).json({ message: "User created successfully", user: userToReturn})
     
   } catch (err) {
     console.error(err);
@@ -76,14 +78,21 @@ app.post('/api/login', async (req, res) =>{
       return res.status(401).json({message: 'Invalid credentials'})
     }
 
-    // Generate the JWT token for kogin
+    // Generate the JWT token for Login
     const token = jwt.sign(
       {id: user.id, email: user.email},
       process.env.JWT_SECRET,
       {expiresIn: '2hr'}
     );
 
-    res.status(200).json({message: 'Login successful', token})
+    res.status(200).json({message: 'Login successful', token, user: [
+      {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
+    ]})
   } catch (error) {
     console.error(error)
     res.status(500).json({message: 'Internal server error', error: error.errors})
@@ -91,7 +100,7 @@ app.post('/api/login', async (req, res) =>{
 })
 
 // Course Creation by Instructors
-app.post('/courses', async (req, res) => {
+app.post('/api/courses', async (req, res) => {
   const { title, description, instructor } = req.body;
 
   if (!title || !description || !instructor) {
@@ -104,12 +113,12 @@ app.post('/courses', async (req, res) => {
     res.status(201).json({ message: 'Course created successfully', course });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
 
 // Get all the courses 
-app.get('/courses', async (req, res) => {
+app.get('/api/courses', async (req, res) => {
   try {
     const courses = await Course.find().populate('instructor', 'username email');
     res.status(200).json(courses);
