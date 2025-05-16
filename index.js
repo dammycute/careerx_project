@@ -1,0 +1,127 @@
+const express = require('express');
+const mongoose = require('mongoose');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const cors = require('cors');
+require('dotenv').config();
+
+const User = require('./model');
+const Course = require('./model');
+
+const app = express();
+app.use(express.json());
+app.use(cors());
+
+// MongoDB Connection
+mongoose.connect(process.env.MONGO_URL, {
+  // useNewUrlParser: true,
+  // useUnifiedTopology: true
+}).then(() => console.log('MongoDB connected...'))
+  .catch(err => console.error('MongoDB connection error:', err));
+
+app.post('/api/register', async (req, res) =>{
+  const { name, email, password, role } = req.body
+
+  if (!name|| !email || !password){
+      return res.status(400).json({message: "Fill all neccessary fields"})
+    }
+
+  try {
+    const existingUser = await User.findOne({email})
+    if (existingUser){
+      return res.status(400).json({
+        success: false,
+        message: 'User with this email already exists'
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser  = new User({
+      name,
+      email, 
+      password: hashedPassword,
+      role
+    });
+
+    await newUser.save();
+    res.status(201).json({ message: "User created successfully", newUser })
+    
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "server error", error: err.message})
+  }
+})
+
+
+// User Login 
+
+app.post('/api/login', async (req, res) =>{
+  const { email, password } = req.body;
+
+  if (!email || !password){
+    return res.status(400).json({message: "Email and password are required"})
+  }
+
+  try {
+    // Check if the user exists
+    const user = await User.findOne({email})
+    if (!User){
+      return res.status(401).json({message: 'Invalid credentials'})
+    }
+
+    // Compare the passwords: Check if the password entered is the same as the password the user used for signup
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch){
+      return res.status(401).json({message: 'Invalid credentials'})
+    }
+
+    // Generate the JWT token for kogin
+    const token = jwt.sign(
+      {id: user.id, email: user.email},
+      process.env.JWT_SECRET,
+      {expiresIn: '2hr'}
+    );
+
+    res.status(200).json({message: 'Login successful', token})
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({message: 'Internal server error', error: error.errors})
+  }
+})
+
+// Course Creation by Instructors
+app.post('/courses', async (req, res) => {
+  const { title, description, instructor } = req.body;
+
+  if (!title || !description || !instructor) {
+    return res.status(400).json({ message: 'All fields are required' });
+  }
+
+  try {
+    const course = new Course({ title, description, instructor });
+    await course.save();
+    res.status(201).json({ message: 'Course created successfully', course });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get all the courses 
+app.get('/courses', async (req, res) => {
+  try {
+    const courses = await Course.find().populate('instructor', 'username email');
+    res.status(200).json(courses);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+
+const PORT = process.env.PORT || 2000;
+  app.listen(PORT, () => console.log(`Server is running on port ${PORT}`))
+
+
+
