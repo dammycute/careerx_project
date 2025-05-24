@@ -7,6 +7,9 @@ require('dotenv').config();
 
 const User = require('./model/userModel');
 const Course = require('./model/courseModel');
+const auth = require('./middleware/auth');
+const authorize = require('./middleware/authorize');
+const Enrollment = require('./model/enrollment');
 
 const app = express();
 app.use(express.json());
@@ -100,7 +103,7 @@ app.post('/api/login', async (req, res) =>{
 })
 
 // Course Creation by Instructors
-app.post('/api/courses', async (req, res) => {
+app.post('/api/courses', auth, authorize(['instructor']),  async (req, res) => {
   const { title, description, instructor } = req.body;
 
   if (!title || !description || !instructor) {
@@ -118,7 +121,7 @@ app.post('/api/courses', async (req, res) => {
 });
 
 // Get all the courses 
-app.get('/api/courses', async (req, res) => {
+app.get('/api/courses', auth, async (req, res) => {
   try {
     const courses = await Course.find().populate('instructor', 'username email');
     res.status(200).json(courses);
@@ -127,6 +130,70 @@ app.get('/api/courses', async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+
+
+// Enrollment Endpoint 
+
+app.post('/api/enroll/:courseId', auth, async (req, res) =>{
+  const { courseId } = req.params
+
+  if (req.user.role != 'student'){
+    return res.status(403).json({message: 'Only students can enroll' })
+  }
+
+  try {
+    // Check if course exists
+    const course = await Course.findById(CourseId);
+
+    if (!course) {
+      return res.status(404).json({message: 'Course not found'});
+    }
+
+    // Check if already enrolled 
+    const existing = await Enrollment.findOne({
+      student: req.user.id, 
+      course: courseId
+    });
+
+    if (existing) {
+      return res.status(400).json({message: 'Already enrolled in this course'})
+    }
+
+
+    // Create new enrollment 
+    const enrollment = new Enrollment.find.One({
+      student: req.user.id,
+      course: courseId
+    });
+    await enrollment.save();
+    res.status(201).json({message: 'Enrollment Successful'})
+  } catch (err) {
+    console.log(err)
+    res.status(500).json({message: err.message})
+  }
+})
+
+
+app.get('/courses/:id/students', auth, async (req, res) => {
+  const courseId = req.params.id;
+
+  try {
+    // Make sure the logged-in user is the instructor of the course
+    const course = await Course.findById(courseId);
+    if (!course || course.instructor.toString() !== req.user.id) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    // Find enrollments for this course and populate student info
+    const enrollments = await Enrollment.find({ course: courseId }).populate('student', 'username email');
+
+    res.status(200).json(enrollments);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
 
 
 const PORT = process.env.PORT || 2000;
