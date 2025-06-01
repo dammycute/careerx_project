@@ -15,6 +15,10 @@ const enrollmentSchema = new mongoose.Schema({
         type: Date,
         default: Date.now
     },
+    completed: {
+    type: Boolean,
+    default: false
+  }
 },{
     timestamps: true
 })

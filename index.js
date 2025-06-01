@@ -174,7 +174,7 @@ app.post('/api/enroll/:courseId', auth, async (req, res) =>{
 })
 
 
-app.get('/courses/:id/students', auth, async (req, res) => {
+app.get('/api/courses/:id/students', auth, async (req, res) => {
   const courseId = req.params.id;
 
   try {
@@ -193,6 +193,71 @@ app.get('/courses/:id/students', auth, async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+
+// Student can view their enrollment 
+app.get('/api/my-courses', auth, async (req, res) => {
+  if (req.user.role !== 'student') {
+    return res.status(403).json({ message: 'Only students can view their courses' });
+  }
+
+  try {
+    const enrollments = await Enrollment.find({ student: req.user.id })
+      .populate({
+        path: 'course',
+        populate: { path: 'instructor', select: 'username email' }
+      });
+
+    res.status(200).json(enrollments);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Course details Route 
+app.get('/api/courses/:id', auth, async (req, res) => {
+  try {
+    const course = await Course.findById(req.params.id)
+      .populate('instructor', 'username email');
+
+    if (!course) {
+      return res.status(404).json({ message: 'Course not found' });
+    }
+
+    res.status(200).json(course);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+
+// Route to mark course as completed. 
+
+app.patch('/api/courses/:id/complete', auth, async (req, res) => {
+  if (req.user.role !== 'student') {
+    return res.status(403).json({ message: 'Only students can update course status' });
+  }
+
+  try {
+    const enrollment = await Enrollment.findOneAndUpdate(
+      { student: req.user.id, course: req.params.id },
+      { completed: true },
+      { new: true }
+    );
+
+    if (!enrollment) {
+      return res.status(404).json({ message: 'Enrollment not found' });
+    }
+
+    res.status(200).json({ message: 'Marked as completed', enrollment });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+
 
 
 
